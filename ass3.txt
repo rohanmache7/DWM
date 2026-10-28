@@ -1,0 +1,178 @@
+%pip install pandas mlxtend
+
+
+import pandas as pd
+
+from mlxtend.preprocessing import TransactionEncoder
+from mlxtend.frequent_patterns import apriori, association_rules
+
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+
+trans = [
+    ['Python', 'ML', 'AI'],
+    ['Python', 'ML'],
+    ['Python', 'ML', 'AI'],
+    ['Python', 'SQL'],
+    ['Python', 'ML'],
+    ['ML', 'AI'],
+    ['Python', 'ML', 'AI'],
+    ['Python', 'SQL'],
+    ['Python', 'ML'],
+    ['Python', 'ML', 'AI'],
+    ['SQL', 'Python'],
+    ['Python', 'ML'],
+    ['ML', 'AI'],
+    ['Python', 'ML', 'AI'],
+    ['Python', 'SQL']
+]
+
+len(trans)
+
+
+
+for customer_no, transaction in enumerate(trans, 1):
+    books = ', '.join(transaction)
+    print(f"Customer {customer_no}: {books}")
+
+
+
+te = TransactionEncoder()
+
+data = te.fit(trans).transform(trans)
+
+df = pd.DataFrame(data, columns=te.columns_)
+
+df
+
+
+sup = 0.40
+
+freq = apriori(
+    df,
+    min_support=sup,
+    use_colnames=True
+)
+
+freq
+
+
+freq = freq.sort_values(
+    by='support',
+    ascending=False
+).reset_index(drop=True)
+
+freq
+
+
+out = freq.copy()
+
+out['support'] = (out['support'] * 100).round(2)
+
+out
+
+
+conf = 0.60
+
+rules = association_rules(
+    freq,
+    metric='confidence',
+    min_threshold=conf
+)
+
+rules
+
+
+
+res = rules[
+    ['antecedents', 'consequents',
+     'support', 'confidence', 'lift']
+].copy()
+
+res['support'] = (res['support'] * 100).round(2)
+res['confidence'] = (res['confidence'] * 100).round(2)
+res['lift'] = res['lift'].round(2)
+
+res
+
+
+
+
+
+res['antecedents'] = res['antecedents'].apply(
+    lambda x: ', '.join(sorted(x))
+)
+
+res['consequents'] = res['consequents'].apply(
+    lambda x: ', '.join(sorted(x))
+)
+
+res
+
+
+
+
+res = res.sort_values(
+    by='confidence',
+    ascending=False
+).reset_index(drop=True)
+
+res
+
+
+
+display(res)
+
+
+
+
+strong = res[res['lift'] > 1]
+
+display(strong)
+
+
+
+
+plt.figure(figsize=(12, 6))
+
+labels = res['antecedents'] + ' → ' + res['consequents']
+
+x = range(len(res))
+width = 0.35
+
+plt.bar(
+    [i - width/2 for i in x],
+    res['support'],
+    width=width,
+    label='Support'
+)
+
+plt.bar(
+    [i + width/2 for i in x],
+    res['confidence'],
+    width=width,
+    label='Confidence'
+)
+
+plt.xlabel('Association Rules')
+plt.ylabel('Percentage (%)')
+plt.title('Support and Confidence of Association Rules')
+
+plt.xticks(x, labels, rotation=45, ha='right')
+plt.legend()
+
+plt.tight_layout()
+plt.show()
+
+
+
+
+best = res.iloc[0]
+
+print("Best Association Rule")
+print("---------------------")
+print(f"{best['antecedents']} → {best['consequents']}")
+print(f"Support    : {best['support']}%")
+print(f"Confidence : {best['confidence']}%")
+print(f"Lift       : {best['lift']}")

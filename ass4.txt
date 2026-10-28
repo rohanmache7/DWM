@@ -1,0 +1,670 @@
+%pip install numpy pandas matplotlib scikit-learn
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.tree import DecisionTreeClassifier, plot_tree
+from sklearn.naive_bayes import GaussianNB
+
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    confusion_matrix,
+    classification_report,
+    roc_curve,
+    roc_auc_score
+)
+
+import warnings
+warnings.filterwarnings("ignore")
+
+print("Libraries imported successfully.")
+
+
+
+
+
+np.random.seed(42)
+
+n = 1000
+
+income = np.random.randint(20000, 150001, n)
+credit_score = np.random.randint(450, 851, n)
+
+employment_status = np.random.choice(
+    ["Employed", "Self-Employed", "Unemployed"],
+    size=n,
+    p=[0.65, 0.25, 0.10]
+)
+
+loan_amount = np.random.randint(50000, 1000001, n)
+
+loan_term = np.random.choice(
+    [12, 24, 36, 48, 60],
+    size=n
+)
+
+past_default = np.random.choice(
+    ["Yes", "No"],
+    size=n,
+    p=[0.20, 0.80]
+)
+
+# Create an underlying approval score
+score = (
+    0.000015 * income
+    + 0.012 * credit_score
+    - 0.0000025 * loan_amount
+    - 0.01 * loan_term
+    + np.where(employment_status == "Employed", 1.2, 0)
+    + np.where(employment_status == "Self-Employed", 0.7, 0)
+    + np.where(employment_status == "Unemployed", -1.5, 0)
+    + np.where(past_default == "No", 1.5, -2.0)
+)
+
+# Add randomness
+score += np.random.normal(0, 1.5, n)
+
+loan_approved = (score > np.median(score)).astype(int)
+
+df = pd.DataFrame({
+    "Income": income,
+    "Credit_Score": credit_score,
+    "Employment_Status": employment_status,
+    "Loan_Amount": loan_amount,
+    "Loan_Term": loan_term,
+    "Past_Default": past_default,
+    "Loan_Approved": loan_approved
+})
+
+df.head()
+
+
+
+
+
+print("Number of rows    :", df.shape[0])
+print("Number of columns :", df.shape[1])
+
+
+
+df.head(10)
+df.info()
+df.describe()
+
+missing_values = df.isnull().sum()
+
+print("Missing values in each column:")
+print(missing_values)
+
+
+duplicates = df.duplicated().sum()
+
+print("Number of duplicate records:", duplicates)
+
+
+
+plt.figure(figsize=(6, 4))
+
+df["Loan_Approved"].value_counts().sort_index().plot(
+    kind="bar"
+)
+
+plt.title("Loan Approval Distribution")
+plt.xlabel("Loan Approval")
+plt.ylabel("Number of Applications")
+plt.xticks([0, 1], ["Rejected (0)", "Approved (1)"], rotation=0)
+
+plt.show()
+
+
+
+numeric_columns = [
+    "Income",
+    "Credit_Score",
+    "Loan_Amount",
+    "Loan_Term"
+]
+
+df[numeric_columns].hist(
+    figsize=(12, 8),
+    bins=20
+)
+
+plt.suptitle("Distribution of Numerical Features")
+plt.tight_layout()
+plt.show()
+
+
+
+
+
+plt.figure(figsize=(8, 5))
+
+plt.boxplot(
+    [
+        df[df["Loan_Approved"] == 0]["Credit_Score"],
+        df[df["Loan_Approved"] == 1]["Credit_Score"]
+    ],
+    labels=["Rejected", "Approved"]
+)
+
+plt.title("Credit Score vs Loan Approval")
+plt.xlabel("Loan Decision")
+plt.ylabel("Credit Score")
+
+plt.show()
+
+
+
+
+
+plt.figure(figsize=(8, 5))
+
+plt.boxplot(
+    [
+        df[df["Loan_Approved"] == 0]["Income"],
+        df[df["Loan_Approved"] == 1]["Income"]
+    ],
+    labels=["Rejected", "Approved"]
+)
+
+plt.title("Income vs Loan Approval")
+plt.xlabel("Loan Decision")
+plt.ylabel("Income")
+
+plt.show()
+
+
+
+
+
+
+approval_employment = pd.crosstab(
+    df["Employment_Status"],
+    df["Loan_Approved"]
+)
+
+approval_employment.plot(
+    kind="bar",
+    figsize=(8, 5)
+)
+
+plt.title("Employment Status vs Loan Approval")
+plt.xlabel("Employment Status")
+plt.ylabel("Number of Applicants")
+plt.xticks(rotation=0)
+plt.legend(["Rejected", "Approved"])
+
+plt.show()
+
+
+
+
+
+default_approval = pd.crosstab(
+    df["Past_Default"],
+    df["Loan_Approved"]
+)
+
+default_approval.plot(
+    kind="bar",
+    figsize=(7, 5)
+)
+
+plt.title("Past Default History vs Loan Approval")
+plt.xlabel("Past Default")
+plt.ylabel("Number of Applicants")
+plt.xticks(rotation=0)
+plt.legend(["Rejected", "Approved"])
+
+plt.show()
+
+
+
+
+
+df_encoded = pd.get_dummies(
+    df,
+    columns=["Employment_Status", "Past_Default"],
+    drop_first=True,
+    dtype=int
+)
+
+df_encoded.head()
+
+
+
+
+
+
+correlation = df_encoded.corr()
+
+plt.figure(figsize=(10, 7))
+
+plt.imshow(correlation, cmap="coolwarm", aspect="auto")
+
+plt.colorbar()
+
+plt.xticks(
+    range(len(correlation.columns)),
+    correlation.columns,
+    rotation=45,
+    ha="right"
+)
+
+plt.yticks(
+    range(len(correlation.columns)),
+    correlation.columns
+)
+
+plt.title("Correlation Matrix")
+
+plt.tight_layout()
+plt.show()
+
+
+
+
+
+X = df_encoded.drop("Loan_Approved", axis=1)
+
+y = df_encoded["Loan_Approved"]
+
+print("Features:")
+print(X.columns.tolist())
+
+print("\nTarget:")
+print(y.name)
+
+
+
+TGrain Test SPlt
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.20,
+    random_state=42,
+    stratify=y
+)
+
+print("Training samples:", X_train.shape[0])
+print("Testing samples :", X_test.shape[0])
+
+
+
+
+print("Training class distribution:")
+print(y_train.value_counts(normalize=True))
+
+print("\nTesting class distribution:")
+print(y_test.value_counts(normalize=True))
+
+
+
+
+ALgos
+
+dt_model = DecisionTreeClassifier(
+    criterion="gini",
+    max_depth=5,
+    random_state=42
+)
+
+dt_model.fit(X_train, y_train)
+
+y_pred_dt = dt_model.predict(X_test)
+
+print("Decision Tree model trained successfully.")
+
+
+dt_accuracy = accuracy_score(y_test, y_pred_dt)
+
+print("Decision Tree Accuracy:", round(dt_accuracy, 4))
+
+
+
+
+plt.figure(figsize=(20, 10))
+
+plot_tree(
+    dt_model,
+    feature_names=X.columns,
+    class_names=["Rejected", "Approved"],
+    filled=True,
+    rounded=True,
+    fontsize=9
+)
+
+plt.title("Decision Tree for Loan Approval")
+plt.show()
+
+
+feature_importance = pd.Series(
+    dt_model.feature_importances_,
+    index=X.columns
+).sort_values(ascending=False)
+
+print(feature_importance)
+
+
+
+
+plt.figure(figsize=(9, 5))
+
+feature_importance.plot(kind="bar")
+
+plt.title("Decision Tree Feature Importance")
+plt.xlabel("Features")
+plt.ylabel("Importance")
+plt.xticks(rotation=45)
+
+plt.tight_layout()
+plt.show()
+
+
+
+Gausian
+nb_model = GaussianNB()
+
+nb_model.fit(X_train, y_train)
+
+y_pred_nb = nb_model.predict(X_test)
+
+print("Naïve Bayes model trained successfully.")
+
+
+
+nb_accuracy = accuracy_score(y_test, y_pred_nb)
+
+print("Naïve Bayes Accuracy:", round(nb_accuracy, 6)*100)
+
+
+
+print("===== DECISION TREE =====")
+print(classification_report(
+    y_test,
+    y_pred_dt,
+    target_names=["Rejected", "Approved"]
+))
+
+print("\n===== NAÏVE BAYES =====")
+print(classification_report(
+    y_test,
+    y_pred_nb,
+    target_names=["Rejected", "Approved"]
+))
+
+
+
+cm_dt = confusion_matrix(y_test, y_pred_dt)
+
+print("Decision Tree Confusion Matrix:")
+print(cm_dt)
+
+
+
+
+plt.figure(figsize=(6, 5))
+
+plt.imshow(cm_dt)
+
+plt.title("Decision Tree - Confusion Matrix")
+plt.xlabel("Predicted Class")
+plt.ylabel("Actual Class")
+
+plt.xticks([0, 1], ["Rejected", "Approved"])
+plt.yticks([0, 1], ["Rejected", "Approved"])
+
+for i in range(2):
+    for j in range(2):
+        plt.text(
+            j,
+            i,
+            cm_dt[i, j],
+            ha="center",
+            va="center"
+        )
+
+plt.colorbar()
+plt.show()
+
+
+
+
+cm_nb = confusion_matrix(y_test, y_pred_nb)
+
+print("Naïve Bayes Confusion Matrix:")
+print(cm_nb)
+
+
+
+
+plt.figure(figsize=(6, 5))
+
+plt.imshow(cm_nb)
+
+plt.title("Naïve Bayes - Confusion Matrix")
+plt.xlabel("Predicted Class")
+plt.ylabel("Actual Class")
+
+plt.xticks([0, 1], ["Rejected", "Approved"])
+plt.yticks([0, 1], ["Rejected", "Approved"])
+
+for i in range(2):
+    for j in range(2):
+        plt.text(
+            j,
+            i,
+            cm_nb[i, j],
+            ha="center",
+            va="center"
+        )
+
+plt.colorbar()
+plt.show()
+
+
+
+
+results = pd.DataFrame({
+    "Algorithm": [
+        "Decision Tree",
+        "Naïve Bayes"
+    ],
+
+    "Accuracy": [
+        accuracy_score(y_test, y_pred_dt),
+        accuracy_score(y_test, y_pred_nb)
+    ],
+
+    "Precision": [
+        precision_score(y_test, y_pred_dt),
+        precision_score(y_test, y_pred_nb)
+    ],
+
+    "Recall": [
+        recall_score(y_test, y_pred_dt),
+        recall_score(y_test, y_pred_nb)
+    ],
+
+    "F1-Score": [
+        f1_score(y_test, y_pred_dt),
+        f1_score(y_test, y_pred_nb)
+    ]
+})
+
+results.round(4)
+
+
+
+results_plot = results.set_index("Algorithm")
+
+results_plot.plot(
+    kind="bar",
+    figsize=(10, 6)
+)
+
+plt.title("Classification Algorithm Performance Comparison")
+plt.xlabel("Algorithm")
+plt.ylabel("Score")
+plt.ylim(0, 1.05)
+
+plt.xticks(rotation=0)
+
+plt.legend(
+    title="Performance Metric",
+    bbox_to_anchor=(1.05, 1),
+    loc="upper left"
+)
+
+plt.tight_layout()
+plt.show()
+
+
+y_prob_dt = dt_model.predict_proba(X_test)[:, 1]
+y_prob_nb = nb_model.predict_proba(X_test)[:, 1]
+
+auc_dt = roc_auc_score(y_test, y_prob_dt)
+auc_nb = roc_auc_score(y_test, y_prob_nb)
+
+print("Decision Tree AUC :", round(auc_dt, 4))
+print("Naïve Bayes AUC   :", round(auc_nb, 4))
+
+
+
+
+fpr_dt, tpr_dt, _ = roc_curve(y_test, y_prob_dt)
+fpr_nb, tpr_nb, _ = roc_curve(y_test, y_prob_nb)
+
+plt.figure(figsize=(8, 6))
+
+plt.plot(
+    fpr_dt,
+    tpr_dt,
+    label=f"Decision Tree (AUC = {auc_dt:.3f})"
+)
+
+plt.plot(
+    fpr_nb,
+    tpr_nb,
+    label=f"Naïve Bayes (AUC = {auc_nb:.3f})"
+)
+
+plt.plot(
+    [0, 1],
+    [0, 1],
+    linestyle="--",
+    label="Random Classifier"
+)
+
+plt.xlabel("False Positive Rate")
+plt.ylabel("True Positive Rate")
+plt.title("ROC Curve Comparison")
+
+plt.legend()
+plt.grid(True)
+
+plt.show()
+
+
+
+
+
+new_applicant = pd.DataFrame({
+    "Income": [100000],
+    "Credit_Score": [750],
+    "Loan_Amount": [300000],
+    "Loan_Term": [36],
+    "Employment_Status_Self-Employed": [0],
+    "Employment_Status_Unemployed": [0],
+    "Past_Default_Yes": [0]
+})
+
+# Ensure exactly the same feature order as training data
+new_applicant = new_applicant.reindex(
+    columns=X.columns,
+    fill_value=0
+)
+
+print("New applicant:")
+display(new_applicant)
+
+
+
+
+
+new_applicant = pd.DataFrame({
+    "Income": [100000],
+    "Credit_Score": [750],
+    "Loan_Amount": [300000],
+    "Loan_Term": [36],
+    "Employment_Status_Self-Employed": [0],
+    "Employment_Status_Unemployed": [0],
+    "Past_Default_Yes": [0]
+})
+
+# Ensure exactly the same feature order as training data
+new_applicant = new_applicant.reindex(
+    columns=X.columns,
+    fill_value=0
+)
+
+print("New applicant:")
+display(new_applicant)
+
+
+
+
+dt_prediction = dt_model.predict(new_applicant)[0]
+nb_prediction = nb_model.predict(new_applicant)[0]
+
+dt_probability = dt_model.predict_proba(new_applicant)[0][1]
+nb_probability = nb_model.predict_proba(new_applicant)[0][1]
+
+print("Decision Tree Prediction:",
+      "Approved" if dt_prediction == 1 else "Rejected")
+
+print("Decision Tree Approval Probability:",
+      round(dt_probability * 100, 2), "%")
+
+print()
+
+print("Naïve Bayes Prediction:",
+      "Approved" if nb_prediction == 1 else "Rejected")
+
+print("Naïve Bayes Approval Probability:",
+      round(nb_probability * 100, 2), "%")
+
+
+
+
+final_results = results.copy()
+
+final_results["AUC"] = [
+    auc_dt,
+    auc_nb
+]
+
+final_results = final_results.round(4)
+
+display(final_results)
+
+
+
+
+best_model = results.loc[
+    results["F1-Score"].idxmax(),
+    "Algorithm"
+]
+
+best_f1 = results["F1-Score"].max()
+
+print("Best Performing Model:", best_model)
+print("Highest F1-Score:", round(best_f1, 4))
