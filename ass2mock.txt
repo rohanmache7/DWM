@@ -1,0 +1,183 @@
+
+CREATE DATABASE IF NOT EXISTS GroceryDW;
+USE GroceryDW;
+
+-- 1. Staging table: raw CSV data
+CREATE TABLE IF NOT EXISTS Staging_Grocery_Sales (
+    TransactionID VARCHAR(30),
+    CustomerID VARCHAR(30),
+    `Date` DATE,
+    `Time` TIME,
+    Store VARCHAR(100),
+    Item VARCHAR(100),
+    Category VARCHAR(100),
+    Quantity INT,
+    UnitPrice DECIMAL(10,2),
+    TotalAmount DECIMAL(12,2),
+    PaymentMethod VARCHAR(50)
+);
+
+-- 2. Customer dimension
+CREATE TABLE IF NOT EXISTS Dim_Customer (
+    Customer_Key INT AUTO_INCREMENT PRIMARY KEY,
+    CustomerID VARCHAR(30) NOT NULL UNIQUE
+);
+
+-- 3. Date dimension
+CREATE TABLE IF NOT EXISTS Dim_Date (
+    Date_ID INT PRIMARY KEY,
+    Full_Date DATE NOT NULL UNIQUE,
+    Month_Name VARCHAR(20)
+);
+
+-- 4. Product dimension
+CREATE TABLE IF NOT EXISTS Dim_Product (
+    Product_ID INT AUTO_INCREMENT PRIMARY KEY,
+    Item VARCHAR(100) NOT NULL,
+    Category VARCHAR(100) NOT NULL,
+    UNIQUE (Item, Category)
+);
+
+-- 5. Store dimension
+CREATE TABLE IF NOT EXISTS Dim_Store (
+    Store_ID INT AUTO_INCREMENT PRIMARY KEY,
+    Store_Name VARCHAR(100) NOT NULL UNIQUE
+);
+
+-- 6. Payment method dimension
+CREATE TABLE IF NOT EXISTS Dim_PaymentMethod (
+    Payment_ID INT AUTO_INCREMENT PRIMARY KEY,
+    PaymentMethod VARCHAR(50) NOT NULL UNIQUE
+);
+
+-- 7. Fact table
+CREATE TABLE IF NOT EXISTS fact_grocerysales (
+    Fact_ID BIGINT AUTO_INCREMENT PRIMARY KEY,
+    TransactionID VARCHAR(30) NOT NULL,
+    Customer_Key INT NOT NULL,
+    Date_ID INT NOT NULL,
+    Product_ID INT NOT NULL,
+    Store_ID INT NOT NULL,
+    Payment_ID INT NOT NULL,
+    Quantity INT NOT NULL,
+    UnitPrice DECIMAL(10,2) NOT NULL,
+    Sales_Amount DECIMAL(12,2) NOT NULL,
+
+    INDEX idx_fact_customer (Customer_Key),
+    INDEX idx_fact_date (Date_ID),
+    INDEX idx_fact_product (Product_ID),
+    INDEX idx_fact_store (Store_ID),
+    INDEX idx_fact_payment (Payment_ID),
+
+    CONSTRAINT fk_fact_customer
+        FOREIGN KEY (Customer_Key)
+        REFERENCES Dim_Customer(Customer_Key),
+
+    CONSTRAINT fk_fact_date
+        FOREIGN KEY (Date_ID)
+        REFERENCES Dim_Date(Date_ID),
+
+    CONSTRAINT fk_fact_product
+        FOREIGN KEY (Product_ID)
+        REFERENCES Dim_Product(Product_ID),
+
+    CONSTRAINT fk_fact_store
+        FOREIGN KEY (Store_ID)
+        REFERENCES Dim_Store(Store_ID),
+
+    CONSTRAINT fk_fact_payment
+        FOREIGN KEY (Payment_ID)
+        REFERENCES Dim_PaymentMethod(Payment_ID)
+);
+
+Roll Up
+SELECT
+    p.Category,
+    SUM(f.Quantity) AS Total_Quantity,
+    ROUND(SUM(f.Sales_Amount), 2) AS Total_Sales
+FROM fact_grocerysales f
+JOIN Dim_Product p
+    ON f.Product_ID = p.Product_ID
+GROUP BY p.Category
+ORDER BY Total_Sales DESC;
+
+
+Drill-down
+SELECT
+    p.Category,
+    p.Item,
+    SUM(f.Quantity) AS Total_Quantity,
+    ROUND(SUM(f.Sales_Amount), 2) AS Total_Sales
+FROM fact_grocerysales f
+JOIN Dim_Product p
+    ON f.Product_ID = p.Product_ID
+GROUP BY p.Category, p.Item
+ORDER BY p.Category, Total_Sales DESC;
+
+
+Slice:
+SELECT DISTINCT PaymentMethod
+FROM Dim_PaymentMethod;
+
+SELECT
+    pm.PaymentMethod,
+    SUM(f.Quantity) AS Total_Quantity,
+    ROUND(SUM(f.Sales_Amount), 2) AS Total_Sales
+FROM fact_grocerysales f
+JOIN Dim_PaymentMethod pm
+    ON f.Payment_ID = pm.Payment_ID
+WHERE pm.PaymentMethod = 'Cash'
+GROUP BY pm.PaymentMethod;
+
+Dice:
+
+SELECT DISTINCT Store_Name FROM Dim_Store;
+SELECT DISTINCT Category FROM Dim_Product;
+SELECT DISTINCT PaymentMethod FROM Dim_PaymentMethod;
+
+SELECT
+    s.Store_Name,
+    p.Category,
+    pm.PaymentMethod,
+    SUM(f.Quantity) AS Total_Quantity,
+    ROUND(SUM(f.Sales_Amount), 2) AS Total_Sales
+FROM fact_grocerysales f
+JOIN Dim_Store s
+    ON f.Store_ID = s.Store_ID
+JOIN Dim_Product p
+    ON f.Product_ID = p.Product_ID
+JOIN Dim_PaymentMethod pm
+    ON f.Payment_ID = pm.Payment_ID
+WHERE s.Store_Name = 'Store 1'
+  AND p.Category IN ('Dairy', 'Beverages')
+  AND pm.PaymentMethod = 'Cash'
+GROUP BY s.Store_Name, p.Category, pm.PaymentMethod
+ORDER BY Total_Sales DESC;
+
+
+
+Pivot:
+SELECT DISTINCT Store_Name
+FROM Dim_Store;
+
+SELECT
+    p.Category,
+    ROUND(SUM(
+        CASE
+            WHEN s.Store_Name = 'Store 1'
+            THEN f.Sales_Amount ELSE 0
+        END
+    ), 2) AS Store_1_Sales,
+    ROUND(SUM(
+        CASE
+            WHEN s.Store_Name = 'Store 2'
+            THEN f.Sales_Amount ELSE 0
+        END
+    ), 2) AS Store_2_Sales
+FROM fact_grocerysales f
+JOIN Dim_Product p
+    ON f.Product_ID = p.Product_ID
+JOIN Dim_Store s
+    ON f.Store_ID = s.Store_ID
+GROUP BY p.Category
+ORDER BY p.Category;
